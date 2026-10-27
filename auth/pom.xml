@@ -76,6 +76,9 @@
                     <systemPropertyVariables>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                     </systemPropertyVariables>
+                    <environmentVariables>
+                        <AUTH_DB_URL>jdbc:sqlite:target/workshop-test.db</AUTH_DB_URL>
+                    </environmentVariables>
                 </configuration>
             </plugin>
             <plugin>
