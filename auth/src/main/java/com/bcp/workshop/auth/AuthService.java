@@ -4,47 +4,53 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.apache.commons.text.StringEscapeUtils;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 
 @ApplicationScoped
 public class AuthService {
-    private static final int OK = 200;
-    private static final int UNAUTHORIZED = 401;
-    private static final int LEGACY_EXPIRES_IN_SECONDS = 3600;
-    private static final String LEGACY_DEBUG_FLAG = "authenticated-with-legacy-flow";
+    private static final String AUTHENTICATION_DEBUG_VALUE = "authenticated-with-legacy-flow";
+
+    private final UserRepository userRepository;
+    private final PasswordHashService passwordHashService;
+    private final SignedTokenService signedTokenService;
 
     @Inject
-    LegacyDatabase database;
-
-    @Inject
-    LoginRequestValidator validator;
-
-    public LoginOutcome login(LoginRequest request) {
-        Optional<LoginRequestValidator.ValidationError> error = validator.validate(request);
-        if (error.isPresent()) {
-            return new LoginOutcome(error.get().status(), Map.of("message", error.get().message()));
-        }
-        UserRecord user = database.findByCredentials(request.username, request.password);
-        if (user == null) {
-            return new LoginOutcome(UNAUTHORIZED, Map.of("message", "Invalid user " + request.username + " or password"));
-        }
-        return new LoginOutcome(OK, successBody(user));
+    public AuthService(
+            UserRepository userRepository,
+            PasswordHashService passwordHashService,
+            SignedTokenService signedTokenService) {
+        this.userRepository = userRepository;
+        this.passwordHashService = passwordHashService;
+        this.signedTokenService = signedTokenService;
     }
 
-    private static Map<String, Object> successBody(UserRecord user) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("token", LegacyTokenUtil.create(user.username(), user.role()));
-        response.put("expiresIn", LEGACY_EXPIRES_IN_SECONDS);
-        response.put("user", Map.of(
-                "username", user.username(),
-                "displayName", StringEscapeUtils.escapeHtml4(user.displayName()),
-                "role", user.role()
-        ));
-        response.put("debug", LEGACY_DEBUG_FLAG);
-        return response;
+    public LoginResponse login(LoginRequest request) {
+        String username = validateRequest(request);
+        Optional<UserRecord> user = userRepository.findByUsername(username)
+                .filter(record -> passwordHashService.matches(request.password, record.passwordHash()));
+        UserRecord authenticatedUser = user.orElseThrow(() -> new InvalidCredentialsException(username));
+        String token = signedTokenService.create(authenticatedUser.username(), authenticatedUser.role());
+        LoginUserResponse responseUser = new LoginUserResponse(
+                authenticatedUser.username(),
+                StringEscapeUtils.escapeHtml4(authenticatedUser.displayName()),
+                authenticatedUser.role());
+        return new LoginResponse(
+                token,
+                SignedTokenService.TOKEN_VALIDITY_SECONDS,
+                responseUser,
+                AUTHENTICATION_DEBUG_VALUE);
     }
 
-    public record LoginOutcome(int status, Map<String, Object> body) {}
+    private String validateRequest(LoginRequest request) {
+        if (request == null) {
+            throw new InvalidLoginRequestException("Request is null");
+        }
+        if (request.username == null || request.username.trim().isEmpty()) {
+            throw new InvalidLoginRequestException("Username is required");
+        }
+        if (request.password == null || request.password.trim().isEmpty()) {
+            throw new InvalidLoginRequestException("Password is required");
+        }
+        return request.username;
+    }
 }
