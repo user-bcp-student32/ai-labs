@@ -319,3 +319,34 @@ a la aprobación final para integrar.
   pasaron; `LegacyDatabaseTest` no pudo iniciar su SQLite por falta de carga
   explícita del driver en esa prueba. Se agregó `Class.forName` solo al
   fixture; falta repetir el comando focalizado.
+- 2026-10-29: HU-01 (Issue #24, cambio `auth-hu-01-token-jwt`), componente
+  auth, paso 1 de `tasks.md` (caracterización sin cambio de comportamiento).
+  Se añadieron 14 pruebas de caracterización a `AuthResourceTest` (5 previas
+  + 14 = 19): 200 con `token`, `expiresIn=3600`, `user` y `debug`; escape HTML
+  de `displayName` con un usuario ficticio `escape-user` insertado solo en la
+  base de prueba; `400` exactos (`Request is null`, `Username is required`,
+  `Password is required` para nulo, vacío y solo espacios; orden username →
+  password); `401` exactos sin `token` para contraseña incorrecta y usuario
+  inexistente; sin `Content-Type` → `415` y JSON mal formado → `400`, ambos
+  sin `token`. Comando: `python tools/lab.py test auth` (desde la raíz).
+  Resultado antes de añadir pruebas: 5 pruebas, `BUILD SUCCESS`. Resultado
+  después: 19 pruebas, 0 fallos, 0 errores, `BUILD SUCCESS`. Sin cambios en
+  código de producción. Nota: el ID `H-AUTH-01` de esta entrada de evidencia
+  de caracterización colisiona con el hallazgo `H-AUTH-01` de `HALLAZGOS.md`;
+  se registra aquí sin reasignar IDs, pendiente de decisión humana.
+  Nota: `HALLAZGOS.md`/`PLAN.md` describen `AuthService`,
+  `PasswordHashService` y `UserRepository`, que no existen en el árbol actual
+  de `auth/src/main`; el código actual concatena el SQL de `LegacyDatabase`.
+  Se usó el código actual como fuente de verdad.
+- 2026-10-29: HU-01 (Issue #24, cambio `auth-hu-01-token-jwt`), componente
+  auth, sección 3 de `tasks.md` (refactor puro sin cambio de comportamiento).
+  Se creó `LoginRequestValidatorTest` (9 pruebas, sin Quarkus) y se
+  implementaron `LoginRequestValidator` (validación y primer error),
+  `AuthService` (caso de uso `login`) y `AuthResource` como adaptador HTTP con
+  el `catch` de 500 intacto. Primera ejecución: fallo de arranque de Quarkus
+  por falta de `@ApplicationScoped` en el validador; corregido. Comando:
+  `python tools/lab.py test auth`. Resultado: 28 pruebas (19 de
+  caracterización sin cambiar expectativas + 9 del validador), 0 fallos, 0
+  errores, `BUILD SUCCESS`. Pendiente: secciones 2 y 4–10 siguen bloqueadas por
+  decisiones humanas Q1–Q6, D1, R1/R2 y R4.
+
