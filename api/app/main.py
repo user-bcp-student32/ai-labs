@@ -11,7 +11,11 @@ import urllib3
 from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.repository import TaskRepository
+
 LEGACY_SECRET = "WORKSHOP_SECRET_2026"
+DEFAULT_STATUS = "TODO"
+DEFAULT_PRIORITY = "MEDIUM"
 
 
 def legacy_identity(authorization: str = Header(default="")) -> dict[str, str]:
@@ -42,6 +46,7 @@ def create_app(db_path: str | None = None, upload_dir: str | None = None) -> Fas
         connection.execute("INSERT INTO tasks(title,description,status,owner,priority,created_at) VALUES ('Trainer notes','Preparar retrospectiva','TODO','trainer','LOW',datetime('now'))")
         connection.commit()
 
+    repository = TaskRepository(connection)
     app = FastAPI(title="Workshop Requirements API", version="0.1.0")
     app.state.connection = connection
     app.state.upload_dir = selected_uploads
@@ -67,30 +72,23 @@ def create_app(db_path: str | None = None, upload_dir: str | None = None) -> Fas
     @app.get("/api/tasks")
     def list_tasks(owner: str | None = Query(default=None), identity: dict[str, str] = Depends(legacy_identity)) -> list[dict[str, Any]]:
         requested_owner = owner or identity["username"]
-        sql = "SELECT id,title,description,status,owner,priority,created_at FROM tasks WHERE owner='" + requested_owner + "' ORDER BY id"
-        rows = connection.execute(sql).fetchall()
-        result: list[dict[str, Any]] = []
-        for row in rows:
-            result.append(as_task(row))
-        return result
+        return [as_task(row) for row in repository.find_by_owner(requested_owner)]
 
     @app.post("/api/tasks", status_code=201)
     def create_task(payload: dict[str, Any] = Body(...), identity: dict[str, str] = Depends(legacy_identity)) -> dict[str, Any]:
-        title = str(payload.get("title", ""))
-        description = str(payload.get("description", ""))
-        status = str(payload.get("status", "TODO"))
-        priority = str(payload.get("priority", "MEDIUM"))
-        owner = str(payload.get("owner", identity["username"]))
-        sql = "INSERT INTO tasks(title,description,status,owner,priority,created_at) VALUES ('" + title + "','" + description + "','" + status + "','" + owner + "','" + priority + "',datetime('now'))"
-        cursor = connection.execute(sql)
-        connection.commit()
-        row = connection.execute("SELECT id,title,description,status,owner,priority,created_at FROM tasks WHERE id=" + str(cursor.lastrowid)).fetchone()
-        return as_task(row)
+        fields = {
+            "title": str(payload.get("title", "")),
+            "description": str(payload.get("description", "")),
+            "status": str(payload.get("status", DEFAULT_STATUS)),
+            "priority": str(payload.get("priority", DEFAULT_PRIORITY)),
+            "owner": str(payload.get("owner", identity["username"])),
+        }
+        return as_task(repository.insert(fields))
 
     @app.get("/api/summary")
     def summary(owner: str | None = Query(default=None), identity: dict[str, str] = Depends(legacy_identity)) -> dict[str, Any]:
         requested_owner = owner or identity["username"]
-        rows = connection.execute("SELECT status,priority FROM tasks WHERE owner='" + requested_owner + "'").fetchall()
+        rows = repository.status_and_priority_by_owner(requested_owner)
         response: dict[str, Any] = {"owner": requested_owner, "total": 0, "byStatus": {}, "highPriorityOpen": 0}
         for row in rows:
             response["total"] = response["total"] + 1

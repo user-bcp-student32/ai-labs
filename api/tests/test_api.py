@@ -51,6 +51,42 @@ def test_uploads_requirement(tmp_path: Path) -> None:
     assert (upload_dir / "requirements.txt").exists()
 
 
+def bearer_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {token()}"}
+
+
+def test_create_applies_default_fields_when_absent(tmp_path: Path) -> None:
+    app = create_app(str(tmp_path / "workshop.db"), str(tmp_path / "uploads"))
+    with TestClient(app) as client:
+        created = client.post("/api/tasks", headers=bearer_headers(), json={})
+    assert created.status_code == 201
+    body = created.json()
+    assert body["title"] == ""
+    assert body["status"] == "TODO"
+    assert body["priority"] == "MEDIUM"
+    assert body["owner"] == "student"
+
+
+def test_create_keeps_quote_in_title_literal(tmp_path: Path) -> None:
+    app = create_app(str(tmp_path / "workshop.db"), str(tmp_path / "uploads"))
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/tasks",
+            headers=bearer_headers(),
+            json={"title": "O'Brien", "description": "d", "status": "TODO", "priority": "LOW"},
+        )
+    assert created.status_code == 201
+    assert created.json()["title"] == "O'Brien"
+
+
+def test_owner_query_is_not_interpreted_as_sql(tmp_path: Path) -> None:
+    app = create_app(str(tmp_path / "workshop.db"), str(tmp_path / "uploads"))
+    with TestClient(app) as client:
+        response = client.get("/api/tasks", headers=bearer_headers(), params={"owner": "x' OR '1'='1"})
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_rejects_invalid_token(tmp_path: Path) -> None:
     app = create_app(str(tmp_path / "workshop.db"), str(tmp_path / "uploads"))
     with TestClient(app) as client:
