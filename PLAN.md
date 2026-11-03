@@ -28,7 +28,7 @@ Pruebas existentes que deben seguir en verde: api/tests/test_api.py (`test_lists
 5. H-API-05: carga segura de archivos.
 6. H-API-02: verificación real del token. Requiere coordinación con auth/ (ver apartado).
 7. H-API-09: restringir orígenes CORS. Independiente de los demás; requiere confirmar el origen de web/.
-8. H-API-08: mensajes genéricos en el 401 y en `backend-health`. Se hace junto con H-API-02, porque ambos cambian el mismo 401.
+8. H-API-08: mensajes genéricos en el 401 y en `backend-health`. Se mantiene separado de H-API-02; sigue pendiente.
 9. H-API-10: limitar el cuerpo reenviado por `backend-health`.
 10. H-API-07: modelos Pydantic, condiciones y constantes. Va al final, cuando las pruebas de caracterización de los puntos anteriores existan.
 
@@ -115,23 +115,19 @@ Pruebas existentes que deben seguir en verde: api/tests/test_api.py (`test_lists
 
 ### H-API-02 — Token Base64 con secreto embebido y verificación incompleta
 
-- **Estado:** aprobado por el usuario para planificar (confirmado en el formulario de aprobación). Esta aprobación no autoriza cambios de código ni resuelve las decisiones pendientes de abajo.
+- **Estado:** aprobado para implementación por el usuario el 2026-11-03, tras aprobar la spec y la arquitectura.
 - **Problema:** api/app/main.py:14 contiene `WORKSHOP_SECRET_2026`. api/app/main.py:19-22 decodifica Base64 y compara el secreto, sin firma, emisor ni audiencia. Cualquiera puede fabricar un token con cualquier identidad.
-- **Cambio propuesto:**
-  - Usar un JWT firmado con HS256 o similar. Verificar firma, `exp`, `iat`, `iss` y `aud` (los claims exactos se definen con auth/).
-  - El secreto viene de una variable de entorno (por ejemplo `WORKSHOP_JWT_SECRET`). Si falta, la app no arranca. Sin valor por defecto en el código.
-  - Dependencia nueva propuesta: `PyJWT`, justificada porque implementa verificación de firma y claims de forma probada. Alternativa sin dependencia: `hmac` de la biblioteca estándar, que requiere implementar el formato a mano; no se recomienda por riesgo de error.
-  - Mantener el mensaje 401 genérico (`Invalid token`); el detalle `str(error)` se corrige en H-API-08, fuera de este plan.
-  - Tiempo de expiración: constante con nombre (valor a confirmar, por ejemplo 3600 segundos).
-- **Archivos:** api/app/security.py (nuevo: verificación), api/app/config.py (secreto), api/app/main.py (dependencia), api/requirements.txt (`PyJWT`), api/tests/test_api.py (token helper).
-- **Dependencia de otro componente:** auth/ emite hoy el token legado `usuario|rol|exp|secreto` en Base64. Si api/ exige JWT firmado, auth/ debe emitir el nuevo formato antes del corte. Eso cambia el contrato de `POST /auth/login` y requiere coordinar con el responsable de auth/ y revisar web/ (que consume el token). Este plan no cambia auth/.
+- **Decisión aprobada:** JWT HS256 compartido entre auth/ y api/, con `iss=workshop-auth`, `aud=workshop-api`, `sub`, `role`, `iat` y `exp`. El secreto `WORKSHOP_JWT_SECRET` es obligatorio y debe tener al menos 32 bytes; no hay valor de producción en el repositorio. El corte es coordinado e inmediato: api/ rechaza tokens Base64 legados.
+- **Cambio realizado:** auth/ emite el JWT tras autenticar; api/ verifica firma, algoritmo permitido, emisor, audiencia, claims y expiración antes de entregar identidad a las rutas.
+- **Dependencias añadidas:** `PyJWT` en api/ y `java-jwt` en auth/ para usar bibliotecas de JWT en ambos lenguajes.
+- **Archivos:** api/app/security.py, api/app/main.py, api/requirements.txt, api/tests/test_api.py; auth/src/main/java/com/bcp/workshop/auth/AuthResource.java, AuthService.java, AuthenticatedSession.java, JwtTokenService.java, auth/pom.xml, propiedades de configuración y pruebas; compose.yaml.
+- **Contrato protegido:** la respuesta de `POST /auth/login` mantiene sus campos; las cinco rutas existentes de api/ conservan paths, respuestas de éxito y `401` para autenticación inválida.
 - **Caracterización previa:**
-  - Mantener: token legado válido sigue funcionando hasta el corte coordinado. La prueba actual `test_lists_seeded_tasks` lo cubre.
-  - Mantener: token inválido devuelve 401 (`test_rejects_invalid_token`).
-  - Nuevo, escrito antes: token con secreto distinto → 401; token expirado → 401; token sin prefijo `Bearer` → comportamiento actual (aceptado) que se decide explícitamente.
-  - Nuevo: con `WORKSHOP_JWT_SECRET` ausente, la app no arranca (falla explícita).
-- **Clean code:** una función para decodificar y otra para verificar claims; sin anidamiento en la verificación.
-- **Decisiones pendientes:** aprobar PyJWT; definir claims (`iss`, `aud`) y la fecha de corte con auth/; decidir si el token legado se acepta durante la transición.
+  - El login mantiene la forma de respuesta y emite un token firmado con claims verificables.
+  - Tokens inválidos, expirados, firmados con otra clave, con otra audiencia, sin identidad completa o del formato legado reciben `401`.
+  - El valor JWT sin prefijo también sigue aceptándose por compatibilidad observada; el formato `Bearer` se conserva.
+  - Sin `WORKSHOP_JWT_SECRET` o con menos de 32 bytes, api/ falla explícitamente al crear la aplicación.
+- **Decisiones pendientes:** ninguna para H-API-02. El mensaje detallado de error de token y los demás aspectos de H-API-08 permanecen fuera del alcance aprobado.
 
 ### H-API-09 — CORS `allow_origins=["*"]` con `allow_credentials=True` (adicional, no en RETO.md)
 
@@ -168,7 +164,7 @@ Pruebas existentes que deben seguir en verde: api/tests/test_api.py (`test_lists
   - Mantener: `backend-health` con upstream inalcanzable devuelve `status: 0` y `requestedBy`.
   - Nuevo: el `body` de la respuesta de error no contiene el texto de la excepción (no se reenvía `str(error)`).
 - **Clean code:** una función para mapear el error a la respuesta genérica; mensaje como constante con nombre.
-- **Decisión pendiente:** ninguna. Se implementa junto con H-API-02, porque ambos cambian el mismo 401.
+- **Estado:** H-API-08 sigue pendiente y no se implementó en el alcance de H-API-02.
 
 ### H-API-10 — backend-health devuelve el cuerpo de un servicio externo (adicional, no en RETO.md)
 
@@ -217,10 +213,11 @@ Pruebas existentes que deben seguir en verde: api/tests/test_api.py (`test_lists
 - Estados en HALLAZGOS.md: el usuario confirmó (2026-11-02, "aprobadas") H-API-01, 02, 06, 07, 08, 09 y 10 como aprobados para planificar. Esta aprobación cubre el plan; no autoriza cambios de código ni resuelve las decisiones abiertas de cada apartado. H-API-03, 04 y 05 no figuran como aprobados; H-API-04 sigue en revisión humana.
 - Selección de hallazgos: HALLAZGOS.md mostró "Aprobado" en casi todas las filas de api por una sustitución de texto, no por aprobaciones humanas. El usuario pidió restaurar "Pendiente" (sin planificar nada aún). Las marcas de H-API-04 "Corregido en código" se conservan. Queda pendiente que el usuario indique qué hallazgos aprueba de verdad.
 - Estado: plan aprobado por el usuario (2026-11-02). La aprobación cubre el plan y su orden; no cubre las decisiones abiertas de abajo, que siguen sin resolver.
-- Aprobación de H-API-02 para planificar: confirmada por el usuario. Sigue pendiente su implementación, que requiere decidir PyJWT, claims `iss`/`aud`, fecha de corte con auth/ y si el token legado se acepta en la transición.
-- Decisiones humanas antes de implementar: H-API-03 (regla de rol y de body), H-API-05 (extensiones, tamaño, `storedAt`), H-API-02 (PyJWT y corte con auth/).
-- Coordinación con auth/ y web/ para H-API-02 y, si se confirma, para H-API-03.
+- Aprobación de H-API-02 para implementación: confirmada por el usuario el 2026-11-03; alcance api/ y auth/, JWT HS256, claims, clave compartida por entorno y corte coordinado del formato legado.
+- H-API-02 implementado en código; evidencia final y cobertura registradas en docs/TESTING.md y HALLAZGOS.md. La revisión humana del cambio sigue pendiente.
+- No se inspeccionó ni modificó web/; la revisión de compatibilidad visual/integral de ese componente permanece fuera del alcance.
+- Decisiones humanas antes de implementar: H-API-03 (regla de rol y de body), H-API-05 (extensiones, tamaño, `storedAt`).
 - Verificación de advisories de H-API-01 realizada en OSV (2026-11-02); falta confirmar en GitHub Advisory o NVD.
 - H-API-04 implementado: api/app/repository.py (consultas con `?`) y api/app/main.py llama al repositorio. Pruebas en api/tests/test_api.py con `python -m pytest -p no:warnings -rA` (cwd `api/`): 7 pasan, incluida la de comilla en título y la de inyección por `owner`. La prueba de comilla pasó tras el cambio (antes fallaba con `sqlite3.OperationalError`). Autorización sin cambios (H-API-03 pendiente).
 - Dependencias de prueba `pytest` y `httpx` instaladas en el entorno local, no declaradas en api/requirements.txt. Decidir si se declaran (pendiente de aprobación).
-- Comando pendiente: `python tools/lab.py test api` (desde la raíz).
+- Evidencia H-API-02: `python tools/lab.py test api` (22 pruebas, PASS, 94.63% cobertura) y `python tools/lab.py test auth` (11 pruebas, PASS, 100% de instrucciones y ramas en las clases modificadas); ver docs/TESTING.md.

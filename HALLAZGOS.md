@@ -11,7 +11,7 @@ Orden: severidad de mayor a menor. H-API-01 a H-API-07 corresponden a la tabla d
 
 | id | componente | hallazgo | tipo | explicacion | evidencia (archivo:linea) | severidad | estado |
 |---|---|---|---|---|---|---|---|
-| H-API-02 | api | Token Base64 con secreto embebido y verificación incompleta | Vulnerabilidad | El secreto `WORKSHOP_SECRET_2026` está en el código, así que cualquiera puede fabricar un token con cualquier `username` y `role`. El token no tiene firma, emisor, audiencia ni `iat`; solo se comprueba la expiración con `<`. Un token falsificado accede a todas las rutas con la identidad elegida. | api/app/main.py:14, api/app/main.py:19-22, api/app/main.py:23-24 | alta | Aprobado |
+| H-API-02 | api | Token Base64 con secreto embebido y verificación incompleta | Vulnerabilidad | El secreto `WORKSHOP_SECRET_2026` está en el código, así que cualquiera puede fabricar un token con cualquier `username` y `role`. El token no tiene firma, emisor, audiencia ni `iat`; solo se comprueba la expiración con `<`. Un token falsificado accede a todas las rutas con la identidad elegida. | api/app/main.py:14, api/app/main.py:19-22, api/app/main.py:23-24 | alta | Corregido en código |
 | H-API-04 | api | Filtros e inserts concatenados en SQL | Vulnerabilidad | El `owner` del query, los campos del body y el `owner` se insertan con `+` en SQL sin parámetros. Una comilla rompe la consulta (500) y un valor malicioso puede alterar la sentencia: lectura o escritura de tablas no previstas. | api/app/main.py:70, api/app/main.py:84-85, api/app/main.py:93, api/app/main.py:87 (el `lastrowid` es entero; riesgo bajo) | alta | Aprobado |
 | H-API-03 | api | El cliente puede consultar o crear tareas de otro `owner` | Vulnerabilidad | `owner` del query reemplaza la identidad autenticada en GET /api/tasks y GET /api/summary. En POST /api/tasks el `owner` del body también sobrescribe la identidad. Es un fallo de autorización independiente de la concatenación SQL. | api/app/main.py:69, api/app/main.py:83, api/app/main.py:92 | alta | Aprobado |
 | H-API-05 | api | Se conserva `upload.filename` tal cual; sin límite de tamaño ni extensión | Vulnerabilidad | `Path(dir) / file.filename` acepta `..` y rutas absolutas (en pathlib una ruta absoluta reemplaza el directorio base), así que puede escribir fuera de `uploads/`. Además el archivo se lee completo en memoria sin límite y se guarda cualquier extensión. La respuesta también expone la ruta absoluta del servidor. | api/app/main.py:109-111, api/app/main.py:112 | alta | Aprobado |
@@ -75,17 +75,23 @@ Todas usan `TestClient` y SQLite temporal (`tmp_path`), con datos ficticios.
 ### Preguntas abiertas
 
 1. ¿Se permite que un usuario autenticado vea o cree tareas de otro `owner`? Si no, ¿qué rol habilitaría la excepción?
-2. ¿Debe mantenerse el token legado en api/ o migrar a un token firmado compartido con auth/? Eso afecta el contrato de login y lo debe decidir el equipo que coordina auth/.
-3. ¿Qué formato de nombre, extensión y tamaño máximo se acepta para `/api/requirements`?
-4. ¿Se acepta `status` y `priority` libres o deben limitarse a un conjunto (TODO, IN_PROGRESS, DONE, ARCHIVED; LOW, MEDIUM, HIGH)?
+2. ¿Qué formato de nombre, extensión y tamaño máximo se acepta para `/api/requirements`?
+3. ¿Se acepta `status` y `priority` libres o deben limitarse a un conjunto (TODO, IN_PROGRESS, DONE, ARCHIVED; LOW, MEDIUM, HIGH)?
 
 ### Pendientes de evidencia
 
 - Verificación de advisories de H-API-01 realizada en OSV (2026-11-02); fuente primaria pendiente de confirmar en GitHub Advisory o NVD.
 - Ejecutar las pruebas existentes y las propuestas. No se ejecutó ningún comando durante este Discovery.
 
+### Evidencia de implementación — H-API-02
+
+- `python tools/lab.py test api` — PASS: 22 pruebas; cobertura total 94.63% (umbral 85%).
+- `python tools/lab.py test auth` — PASS: 11 pruebas; clases auth modificadas con cobertura JaCoCo de instrucciones y ramas 100%.
+- Las pruebas cubren firma HS256, claims, expiración, rechazo del token Base64 legado, rutas protegidas y el contrato de respuesta de login.
+- `compose.yaml` — sintaxis YAML válida con PyYAML. `docker compose config --quiet` y una petición entre servicios no se ejecutaron: Docker no está disponible en este entorno.
+- El cambio está en rama local `day1/prompting`; no se creó ni publicó un PR, conforme a las restricciones del Día 1. Revisión humana pendiente.
+
 ### Comandos no ejecutados
 
-- `python tools/lab.py test api`
-- `cd api` seguido de `pytest` (o el comando configurado en `api/pyproject.toml`)
+- `docker compose config --quiet` y prueba de integración entre auth y api; Docker no está disponible.
 - Cualquier petición a un servicio remoto. No se realizó ninguna.

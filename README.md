@@ -37,9 +37,14 @@ Puedes recorrer los tres componentes. Conserva las evidencias anteriores y añad
 
 Necesitas Docker con Compose y el motor iniciado. Podman Compose es otra opción si ya está preparado en tu equipo.
 
-```bash
+Auth y API comparten `WORKSHOP_JWT_SECRET`, que debe tener al menos 32 bytes. Compose falla si la variable no está definida. En PowerShell puedes generar un valor local para esta sesión:
+
+```powershell
+$env:WORKSHOP_JWT_SECRET = (python -c "import secrets; print(secrets.token_hex(32))")
 docker compose up --build
 ```
+
+No guardes el valor generado en el repositorio. Usa el gestor de secretos del entorno para despliegues.
 
 Abre http://localhost:4200. Usuario ficticio student, contraseña Workshop123!. Autenticación publica http://localhost:8080/q/health y la API http://localhost:8000/docs. La primera ejecución descarga imágenes y dependencias. Espera a que los tres servicios respondan: el orden de arranque no certifica que estén listos.
 
@@ -55,6 +60,8 @@ Al terminar, Ctrl+C y después docker compose down. Esto conserva los volúmenes
 ## Ejecutar un componente
 
 Para desarrollar sin contenedores necesitas JDK 21 y Maven 3.9+ para auth; Python 3.13 para api; Node.js 22.12+ y npm para web. Usa una terminal por servicio y ejecuta los comandos desde la raíz:
+
+Antes de iniciar auth o api, define `WORKSHOP_JWT_SECRET` con el mismo valor de al menos 32 bytes en cada terminal que ejecute esos servicios. No guardes ese valor en el repositorio.
 
 ```bash
 python tools/lab.py setup auth

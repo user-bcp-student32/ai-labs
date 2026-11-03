@@ -2,11 +2,14 @@ name: ai-labs
 services:
   auth:
     build: ./auth
+    environment:
+      WORKSHOP_JWT_SECRET: ${WORKSHOP_JWT_SECRET:?Set WORKSHOP_JWT_SECRET before starting Compose}
     ports:
       - "127.0.0.1:8080:8080"
   api:
     build: ./api
     environment:
+      WORKSHOP_JWT_SECRET: ${WORKSHOP_JWT_SECRET:?Set WORKSHOP_JWT_SECRET before starting Compose}
       AUTH_HEALTH_URL: http://auth:8080/q/health
       WORKSHOP_DB_PATH: /data/workshop.db
       WORKSHOP_UPLOAD_DIR: /uploads
